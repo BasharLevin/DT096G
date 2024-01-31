@@ -17,9 +17,9 @@ public:
     [[nodiscard]] token get_current_token() const;
 
     void set_current_token(token token);
-    [[maybe_unused]] void set_current_token(itr& str, itr& last);
+    void set_current_token(itr& str, itr& last);
     token get_current(itr& str, itr& last);
-    [[maybe_unused]] token get_next(itr& str, itr& last);
+    token get_next(itr& str, itr& last);
 
 private:
     token lookup(itr str, itr last);
