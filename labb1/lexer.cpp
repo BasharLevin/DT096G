@@ -2,59 +2,78 @@
 // Created by Bashar Levin on 2024-01-31.
 //
 
+#include <string>
 #include "lexer.h"
-lexer::token lexer::get_current_token() const {
-    return current_token;
+using it = std::string::iterator;
+
+int lexer::type = 0;
+
+lexer::lexer(itr first, itr last) {
+    while(first != last){
+        input += *first;
+        ++first;
+    }
 }
 
-void lexer::set_current_token(lexer::token token) {
-    lexer::current_token = token;
-}
+char lexer::check(it first, it last) {
+    if (first == last) {
+        type = END;
+        return ' ';
+    }
 
-lexer::token lexer::lookup(itr str, itr last) {
-    if (str == last) { return END; }
-    switch (*str) {
+    switch (*first) {
         case '(':
-            return LPAREN;
+            type = LPAREN;
+            return *first++;
         case ')':
-            return RPAREN;
+            type = RPAREN;
+            return *first++;
         case '{':
-            return LBRACKET;
+            type = LBRACKET;
+            return *first++;
         case '}':
-            return RBRACKET;
-        case '.':
-            return WILDCARD;
+            type = RBRACKET;
+            return *first++;
         case '+':
-            return EITHER_OP;
+            type = EITHER_OP;
+            return *first++;
         case '*':
-            return MANY_OP;
-        case '\\':
-            str++;
-            if (*str == 'O') {
-                str++;
-                return LEVEL_OP;
-            }
-            if (*str == 'I') {
-                str++;
-                return IGNORE_OP;
-            }
-            break;
+            type = MANY_OP;
+            return *first++;
+        case '0'...'9':
+            type = DIGIT;
+            return *first++;
+        case 'a'...'z':
+        case 'A'...'Z':
+            type = CHAR;
+            return *first++;
+        case '"':
+            type = STRING;
+            return *first++;
+        case ' ':
+            type = SPACE;
+            return *first++;
+        default:
+            type = CHAR;
+            return getNextChar(first, last);
     }
-    if ((*str >= 'A' && *str <= 'Z') || (*str >= 'a' && *str <= 'z'))
-        return LETTER;
-    if (*str >= '0' && *str <= '9') {
-        return DIGIT;
-    }
-    throw std::invalid_argument("unified");
 }
 
-    void lexer::set_current_token(itr &str, itr &last) {
-        set_current_token(lookup(str,last));
+char lexer::getNextChar(itr& first, itr last) {
+    char result = *first;
+    ++first;
+    // Consume characters until a non-alphanumeric character is found
+    while (first != last && (isLetter(*first) || isDigit(*first))) {
+        result += *first;
+        ++first;
     }
+    return result;
+}
 
-    lexer::token lexer::get_current(itr &str, itr &last) {
-        set_current_token(lookup(str,last));
-    }
-    lexer::token lexer::get_next(itr &str, itr &last) {
-        return lookup(++str, last);
+bool lexer::isLetter(char c) {
+    return std::isalpha(static_cast<unsigned char>(c)) != 0;
+}
+
+bool lexer::isDigit(char c) {
+    return std::isdigit(static_cast<unsigned char>(c)) != 0;
 }

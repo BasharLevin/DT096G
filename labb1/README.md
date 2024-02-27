@@ -6,10 +6,10 @@ The following is a grammar specification using a custom notation:
 <match> := <exp>
 <exp> := <group> | <or> | <many> | <counter>
 <group> := (exp)
-<word> := <string> | <char>
-<char> := a-z | A-Z
-<string> := <word>(<char> <word>)* | <digits>
-<digits> := 0-9 <digits>
-<or> := <exp> | <exp>
+<string> := <char>{n} 
+<char> := a-z | A-Z | 0-9 | 
+<digit> := 0-9  /
+<word> := <char>{1,}    
+<or> := <exp> | <exp> (not <exp>)  
 <many> := <exp>*
-<counter> := <exp>{<digits>}
+<counter> := <exp>{n}

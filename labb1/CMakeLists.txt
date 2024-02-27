@@ -3,4 +3,6 @@ project(labb1)
 
 set(CMAKE_CXX_STANDARD 20)
 
-add_executable(labb1 main.cpp)
+set(Headers lexer.h parser.h)
+add_executable(labb1 ${PROJECT_SOURCE_DIR}/ main.cpp parser.cpp lexer.cpp)
+SET(CMAKE_BUILD_TYPE Debug)
