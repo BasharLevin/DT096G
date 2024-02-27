@@ -6,7 +6,6 @@
 #include "lexer.h"
 using it = std::string::iterator;
 
-int lexer::type = 0;
 
 lexer::lexer(itr first, itr last) {
     while(first != last){
@@ -15,65 +14,54 @@ lexer::lexer(itr first, itr last) {
     }
 }
 
-char lexer::check(it first, it last) {
+
+char lexer::check(it& first, it& last) {
     if (first == last) {
-        type = END;
-        return ' ';
+        return END;
     }
 
     switch (*first) {
         case '(':
-            type = LPAREN;
-            return *first++;
+            current_c = *first;
+            return LPAREN;
+
         case ')':
-            type = RPAREN;
-            return *first++;
+            current_c = *first;
+            return RPAREN;
         case '{':
-            type = LBRACKET;
-            return *first++;
+            current_c = *first;
+            return LBRACKET;
         case '}':
-            type = RBRACKET;
-            return *first++;
+            current_c = *first;
+            return RBRACKET;
         case '+':
-            type = EITHER_OP;
-            return *first++;
+            current_c = *first;
+            return EITHER_OP;
         case '*':
-            type = MANY_OP;
-            return *first++;
-        case '0'...'9':
-            type = DIGIT;
-            return *first++;
-        case 'a'...'z':
-        case 'A'...'Z':
-            type = CHAR;
-            return *first++;
-        case '"':
-            type = STRING;
-            return *first++;
+            current_c = *first;
+            return MANY_OP;
         case ' ':
-            type = SPACE;
-            return *first++;
+            current_c = *first;
+            return SPACE;
+        case '.':
+            current_c = *first;
+            return DOT;
+        case '\\':
+        current_c = *first;
+            return SLASH;
+
         default:
-            type = CHAR;
-            return getNextChar(first, last);
+            if (isLetter(*first))
+                return CHAR;
+            if(isdigit(*first)){
+                return DIGIT;
+            }
     }
+    return UNKOWN;
 }
 
-char lexer::getNextChar(itr& first, itr last) {
-    char result = *first;
-    ++first;
-    // Consume characters until a non-alphanumeric character is found
-    while (first != last && (isLetter(*first) || isDigit(*first))) {
-        result += *first;
-        ++first;
-    }
-    return result;
-}
 
 bool lexer::isLetter(char c) {
     return std::isalpha(static_cast<unsigned char>(c)) != 0;
 }
 
-bool lexer::isDigit(char c) {
-    return std::isdigit(static_cast<unsigned char>(c)) != 0;
-}

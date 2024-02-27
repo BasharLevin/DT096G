@@ -8,75 +8,60 @@
 #include <vector>
 
 /*
-<match> := <exp>
-<exp> := <group> | <or> | <many> | <counter>
-<group> := (exp)
-<word> := <string> | <char>
-<char> := a-z | A-Z | <digits> | <anyChar>
-<anyChar> := .
-<string> := <word>(<char> <word>) | <digits>
-<digits> := 0-9 <digits>
-<or> := <exp> + <exp>
-<many> := <exp>*
-<counter> := <exp>{<digits>}
+<match> ::= <exp>
+<exp> ::= <group> | <or> | <sub> | <word>
+<sub> ::= <many> | <counter>
+<group> ::= '(' <exp> ')'
+<word> ::= <char> | <char> <word> | <sub>
+<char> ::= 'a'-'z' | 'A'-'Z' | <digits> | <wildcard>
+<digits> ::= '0'-'9' { <digits> }
+<or> ::= <exp> '+' <exp>
+<many> ::= <exp> '*'
+<counter> ::= <exp> '{' <digits> '}'
+<ignore> ::= <exp> '\I'
+<output_group> ::= <gropu>\O{ditgits}
+<wildcard> ::= '.'
  */
-ch_op* char_parse(it first, it last, lexer lexer){
-    auto value = lexer.check(first, last);
-    if (value == lexer::END){
+
+
+many* parse_many(it& first, it last, lexer& lexer) {
+    auto restore = first;
+    if (first == last) return nullptr;
+
+    auto word = char_parser(first, last, lexer);
+    if (!word) {
         return nullptr;
     }
-    if (value == lexer::CHAR || value == lexer::DIGIT){
-        return new ch_op(*first);
-    }
-    return nullptr;
-}
-word_op* parse_word(it& first, it last, lexer lexer){
-    auto value = char_parse(first, last, lexer);
-    if (value){
-        auto* result = new word_op;
-        result->add(value);
-        ++first;
-        result->add(parse_word(first, last, lexer));
-        return result;
-    }
-    return nullptr;
-
-}
-many* many_parser(it first, it last, lexer lexer){
-    auto word = parse_word(first, last, lexer);
-    if (!word)
+    auto token = lexer.check(++first, last);
+    if (token != lexer::MANY_OP) {
+        first = restore;
         return nullptr;
-    char token = lexer.check(first, last);
-    if (token == lexer::MANY_OP){
-        many* value = new many;
-        value->add(word);
-        return value;
 
     }
-    return nullptr;
-}
-counter* count_parser(it& first, it last, lexer lexer){
-    auto word = parse_word(first, last, lexer);
-    if (!word)
-        return nullptr;
-    char token = lexer.check(first, last);
-    if (token == lexer::LBRACKET) {
-        ++first;
-        token = lexer.check(first, last);
-        if (token == lexer::DIGIT) {
-            int n = *first - '0';
-            counter *ctr = new counter(n);
 
-            token = lexer.check(++first, last);
-            if (token == lexer::LBRACKET) {
-                ctr->add(word);
-                return ctr;
-            }
+    many* value = new many;
+    value->add(word);
+
+    ++first;
+    if (first != last) {
+        auto nextExpr = parse_expr(first, last, lexer);
+        if (nextExpr) {
+            value->add(nextExpr);
         }
     }
+
+    return value;
+}
+
+wildCard* wild_card(it first, it last, lexer lexer){
+    char token = lexer.check(first, last);
+    if (token == lexer::DOT){
+        return new wildCard;
+    }
     return nullptr;
 }
-or_* or_parser(it& first, it last, lexer lexer){
+
+or_* parse_or(it first, it last, lexer lexer){
     auto word = parse_word(first, last, lexer);
     if (word) {
         char token = lexer.check(first, last);
@@ -96,7 +81,54 @@ or_* or_parser(it& first, it last, lexer lexer){
     }
     return nullptr;
 }
+ch_op* char_parser(it first, it last, lexer lexer){
+    char token = lexer.check(first, last);
+    auto result = wild_card(first, last, lexer);
+    if (token == lexer::END)
+        return nullptr;
+    if (result) {
+        auto* wc = new wildCard;
+        wc->add(result);
+        return wc;
+    }
+    if (token == lexer::CHAR || token == lexer::DIGIT){
+        return new ch_op(*first);
+    }
+    return nullptr;
+}
+subexpr* parse_subexpression(it& first, it last, lexer lexer) {
+    many* manyResult = parse_many(first, last, lexer);
+    if (manyResult) {
+        subexpr* value = new subexpr();
+        value->add(manyResult);
+        return value;
+    }
+    counter* counterResult = count(first, last, lexer);
+    if (counterResult) {
+        subexpr* value = new subexpr();
+        value->add(counterResult);
+        return value;
+    }
+    return nullptr;
+}
 
+word_op* parse_word(it& first, it last, lexer lexer){
+    auto sub = parse_subexpression(first, last, lexer);
+    if (sub){
+        word_op* result = new word_op;
+        result->add(sub);
+        return result;
+    }
+    auto ch = char_parser(first, last, lexer);
+    if (ch){
+        auto* value = new word_op;
+        value->add(ch);
+        first++;
+        value->add(parse_word(first, last, lexer));
+        return value;
+    }
+    return nullptr;
+}
 group_op* parse_group(it& first, it last, lexer lexer){
     char token = lexer.check(first, last);
     bool sp = false;
@@ -124,57 +156,122 @@ group_op* parse_group(it& first, it last, lexer lexer){
         }
         auto node = new group_op;
         node->add(text);
+        first++;
         return node;
+
     }
     return nullptr;
 }
+output_group_op* parse_output_group(it& first, it last, lexer& lexer) {
+    auto start = first; // Save the starting position in case we need to revert
+    auto token = lexer.check(first, last);
 
+    if (token == lexer::SLASH) { // Assuming SLASH is defined and represents '/'
+        ++first; // Advance past the slash
+        token = lexer.check(first, last);
+
+        if (first != last && *first == 'O') { // Check if 'O' follows the slash directly
+            ++first; // Advance past 'O'
+            token = lexer.check(first, last);
+
+            if (token == lexer::LBRACKET) { // Assuming LBRACKET represents '{'
+                ++first; // Advance past the opening bracket
+                std::string number;
+
+                while (first != last && isdigit(*first)) { // Assuming the digits are to be directly read
+                    number += *first;
+                    ++first; // Collect all digits
+                }
+
+                if (lexer.check(first, last) != lexer::RBRACKET) { // Assuming RBRACKET represents '}'
+                    throw std::runtime_error("Expected }");
+                }
+                ++first; // Advance past the closing bracket
+
+                int group_index = std::stoi(number); // Convert collected number to integer
+                return new output_group_op(group_index); // Create and return a new output_group_op
+            }
+        }
+    }
+
+    first = start;
+    return nullptr;
+}
+
+
+counter* count(it& first, it last, lexer lexer) {
+    auto restore = first;
+    auto word = char_parser(first, last, lexer);
+    if (!word) {
+        return nullptr;
+    }
+    first++;
+    auto value = lexer.check(first, last);
+    if (value == lexer::LBRACKET) {
+        ++first;
+
+        std::string numberStr;
+        while ((value = lexer.check(first, last)) == lexer::DIGIT) {
+            numberStr += *first;
+            ++first; // Collect all digits
+        }
+
+        if (!numberStr.empty() && lexer.check(first, last) == lexer::RBRACKET) {
+            ++first; // Move past the
+            int count = std::stoi(numberStr);
+
+            counter* counterNode = new counter(count);
+            counterNode->add(word);
+
+            return counterNode;
+        }
+    }
+
+    first = restore;
+    return nullptr;
+}
 
 expr_op* parse_expr(it& first, it last, lexer lexer){
+    auto group_node = parse_group(first, last, lexer);
+    if (group_node){
+        auto group_expr = new expr_op;
+        group_expr->add(parse_expr(first, last, lexer));
+        auto grout_output = parse_output_group(first, last, lexer);
+        if (grout_output){
+            auto groupop_expr = new expr_op;
+            groupop_expr->add(group_node);
+            groupop_expr->add(grout_output);
+            return groupop_expr;
+        }
+        else{}
+        group_expr->add(group_node);
+        return group_expr;
+    }
 
-    auto group_op = parse_group(first, last, lexer);
-    if (group_op){
-        auto expr_node = new expr_op;
-        expr_node->add(group_op);
-        expr_node->add(parse_expr(first, last, lexer));
-        return expr_node;
+    auto or_node = parse_or(first, last, lexer);
+    if (or_node){
+        auto or_expr = new expr_op;
+        or_expr->add(or_node);
+        return or_expr;
     }
-    auto text_node = parse_word(first,last, lexer);
-    if(text_node){
-        auto expr_node = new expr_op;
-        expr_node->add(text_node);
-        expr_node->add(parse_expr(first,last, lexer));
-        return expr_node;
+    auto text_node = parse_word(first, last, lexer );
+    if (text_node) {
+        auto epxr = new expr_op;
+        epxr->add(text_node);
+        epxr->add(parse_expr(first, last, lexer));
+        return epxr;
     }
-    auto many = many_parser(first, last, lexer);
-    if (many){
-        auto expr = new expr_op;
-        expr->add(many);
-        return expr;
-    }
-    auto or_exp = or_parser(first, last, lexer);
-    if (or_exp){
-        auto expr = new expr_op;
-        expr->add(or_exp);
-        return expr;
-    }
-    auto counter_expr = count_parser(first, last, lexer);
-    if (counter_expr){
-        auto expr = new expr_op;
-        expr->add(counter_expr);
-        return expr;
+    return nullptr;
+
+}
+
+match_op* parse_match(it first, it last, lexer lexer) {
+    auto expr_node = parse_expr(first, last, lexer);
+    if (expr_node) {
+        auto result = new match_op;
+        result->add(expr_node);
+        return result;
     }
     return nullptr;
 }
-
-match_op* parse_match(it first, it last, lexer lexer){
-    auto expr_node = parse_expr(first, last, lexer);
-    if(!expr_node)
-        return nullptr;
-    auto result = new match_op;
-    result->add(expr_node);
-    return result;
-}
-
-
 

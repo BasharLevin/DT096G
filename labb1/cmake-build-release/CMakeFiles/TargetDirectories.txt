@@ -1,3 +1,0 @@
-/Users/b/Desktop/p_3/Progsrpåkteori/DT096G/Labb1/cmake-build-release/CMakeFiles/labb1.dir
-/Users/b/Desktop/p_3/Progsrpåkteori/DT096G/Labb1/cmake-build-release/CMakeFiles/edit_cache.dir
-/Users/b/Desktop/p_3/Progsrpåkteori/DT096G/Labb1/cmake-build-release/CMakeFiles/rebuild_cache.dir

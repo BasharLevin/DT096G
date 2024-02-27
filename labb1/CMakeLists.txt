@@ -1,8 +1,11 @@
-cmake_minimum_required(VERSION 3.23)
-project(labb1)
+cmake_minimum_required(VERSION 3.27)
+project(untitled)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 17)
 
-set(Headers lexer.h parser.h)
-add_executable(labb1 ${PROJECT_SOURCE_DIR}/ main.cpp parser.cpp lexer.cpp)
-SET(CMAKE_BUILD_TYPE Debug)
+add_executable(untitled main.cpp
+        parser.cpp
+        lexer.cpp
+        lexer.cpp
+        lexer.cpp
+        lexer.cpp)
