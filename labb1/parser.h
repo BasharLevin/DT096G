@@ -9,9 +9,13 @@
 
 using it = std::string::iterator;
 
-
+struct MatchResult {
+    bool success = false;
+    it start;
+    it end;
+};
 struct op{
-    virtual bool eval(it first, it last, it& ptr) = 0;
+    virtual MatchResult eval(it first, it last, it& ptr) = 0;
     void add(op* child){
         if (child)
             children.push_back(child);
@@ -31,13 +35,11 @@ struct op{
 };
 
 struct subexpr:op{
-    bool eval(it first, it last, it& ptr) override{
+    MatchResult eval(it first, it last, it& ptr) override{
         if (!children.empty() && children[0] != nullptr) {
-            bool result = children[0]->eval(first, last, ptr);
+            MatchResult result = children[0]->eval(first, last, ptr);
             return result;
         }
-        return false;
-
     }
     void print_tree(int depth = 0) const override {
         for (int i = 0; i < depth; ++i) std::cout << "  "; // Indentation for readability
@@ -52,13 +54,15 @@ struct subexpr:op{
 struct ch_op:op{
     char c;
     ch_op(char c):c(c){}
-    bool eval(it first, it last, it& ptr) override{
-        if(*first == c || c == '.'){
-            return true;
+    MatchResult eval(it first, it last, it& ptr) override {
+        MatchResult result;
+        if (first != last && (*first == c || c == '.')) {
+            result.success = true;
+            result.start = first;
+            result.end = std::next(first);
+            ptr = result.end; // Move the pointer forward
         }
-        else{
-            return false;
-        }
+        return result;
     }
     void print_tree(int depth = 0) const override {
         for (int i = 0; i < depth; ++i) std::cout << " ";
@@ -66,21 +70,64 @@ struct ch_op:op{
         op::print_tree(depth); // Call base class print to handle children if any
     }
 };
-struct wildCard: ch_op{
-    wildCard(): ch_op('\0'){}
-    bool eval(it first, it last, it& ptr) override{
-        return true;
+struct wildCard: ch_op {
+    wildCard(): ch_op('\0'){} // Initializer list calling base class constructor
+
+    MatchResult eval(it first, it last, it& ptr) override {
+        MatchResult result;
+        if (first != last) { // Ensure there's at least one character to match
+            result.success = true;
+            result.start = first;
+            result.end = std::next(first); // Match one character
+            ptr = result.end; // Update the pointer to the new position
+        }
+        return result;
+    }
+    void print_tree(int depth = 0) const override {
+        for (int i = 0; i < depth; ++i) std::cout << " ";
+        std::cout << "wildcard: '" << c << "'\n";
+        op::print_tree(depth); // Call base class print to handle children if any
     }
 };
+
 struct word_op:op{
-    bool eval(it first, it last, it& ptr) override{
-        auto result = children[0]->eval(first, last, ptr);
-        if (first != last){
-            ptr = first;
+    MatchResult eval(it first, it last, it& ptr) override {
+        MatchResult result;
+        if (children.empty()) {
+            result.success = false;
+            return result; // Return early if there are no children
         }
-        if (children.size() > 1){
-            return result && children[1]->eval(++first, last, ptr);
+
+        // Evaluate the first child
+        auto childResult = children[0]->eval(first, last, ptr);
+        if (!childResult.success) {
+            return childResult; // If the first child doesn't match, fail early
         }
+
+        // Initialize the match boundaries with the result of the first child
+        result.start = childResult.start;
+        result.end = childResult.end;
+        result.success = true; // Assuming success unless a child fails
+
+        // Sequentially evaluate the rest of the children
+        for (size_t i = 1; i < children.size(); ++i) {
+            first = result.end; // Start from where the last match ended
+            childResult = children[i]->eval(first, last, ptr);
+
+            if (!childResult.success) {
+                result.success = false; // Fail if any child fails
+                break; // Exit the loop on failure
+            }
+
+            // Extend the match boundary to include the current child's match
+            result.end = childResult.end;
+        }
+
+        // Update ptr to the end of the match if successful
+        if (result.success) {
+            ptr = result.end;
+        }
+
         return result;
     }
     void print_tree(int depth = 0) const override {
@@ -98,10 +145,20 @@ struct output_group_op : op {
 
     output_group_op(int idx) : group_index(idx) {}
 
-    bool eval(it first, it last, it& ptr) override {
-        if (group_index <= 0 || group_index > children.size()) return false;
+    MatchResult eval(it first, it last, it& ptr) override {
+        MatchResult result;
+        // Check if the group index is out of bounds
+        if (group_index <= 0 || group_index > children.size()) {
+            result.success = false; // Mark as failed match
+            return result;
+        }
         op* target_group = children[group_index - 1];
-        return target_group->eval(first, last, ptr);
+
+        // Execute the target group's eval and return its result
+        result = target_group->eval(first, last, ptr);
+
+        // The success, start, and end of the match are determined by the target group's evaluation
+        return result;
     }
     void print_tree(int depth = 0) const override {
         for (int i = 0; i < depth; ++i) std::cout << "  ";
@@ -111,13 +168,19 @@ struct output_group_op : op {
         }
     }
 };
-struct group_op:op{
-    bool eval(it first, it last, it& ptr) override{
-        if(first == last)
-            return false;
-        auto result = children[0]->eval(first, last, ptr);
-        if (result)return true;
-        return false;
+struct group_op: op {
+    MatchResult eval(it first, it last, it& ptr) override {
+        MatchResult result;
+        // Check if we've reached the end of the input
+        if (first == last) {
+            result.success = false; // Indicate failure if there's no input left
+            return result;
+        }
+        result = children[0]->eval(first, last, ptr);
+        if (result.success) {
+            ptr = result.end;
+        }
+        return result;
     }
     void print_tree(int depth = 0) const override {
         for (int i = 0; i < depth; ++i) std::cout << "  ";
@@ -127,38 +190,54 @@ struct group_op:op{
         }
     }
 };
+
 struct match_op:op{
-    bool eval(it first, it last, it& ptr) override{
-        if (first == last)
-            return false;
-        auto result = children[0]->eval(first,last, ptr);
-        if (!result){
-            return eval(first + 1, last, ptr);
+    MatchResult eval(it first, it last, it& ptr) override {
+        MatchResult result;
+        if (first == last) {
+            result.success = false;
+            return result;
         }
-        return true;
+
+        result = children[0]->eval(first, last, ptr);
+        if (!result.success && std::next(first) != last) {
+            return eval(std::next(first), last, ptr);
+        }
+        return result;
     }
 };
 struct many: op{
-    bool eval(it first, it last, it& ptr) override {
-        bool matchedAtLeastOnce = false;
+    MatchResult eval(it first, it last, it& ptr) override {
+        MatchResult result;
+        result.success = false; // Assume failure initially
         auto start = first;
 
-        while (first != last && children[0]->eval(first, last, ptr)) {
-            matchedAtLeastOnce = true;
-            if (first == ptr) { // Prevent infinite loop by ensuring progress
-                ++first;
-            } else {
-                ptr = first; // Update ptr to the new position after a successful match
+        while (first != last) {
+            auto childResult = children[0]->eval(first, last, ptr);
+            if (!childResult.success) {
+                break; // Stop if the child no longer matches
+            }
+            // Ensure at least one match occurred for success
+            result.success = true;
+            first = ptr; // Update 'first' to the new position
+        }
+
+        if (result.success) {
+            result.start = start;
+            result.end = first; // Set the end of the match
+        }
+
+        // Evaluate the second child if it exists and the first child matched at least once
+        if (result.success && children.size() > 1) {
+            auto secondChildResult = children[1]->eval(start, last, ptr);
+            if (!secondChildResult.success) {
+                result.success = false; // Mark as failure if the second child fails
             }
         }
 
-        // If there's a second child, try to evaluate it after matching the first child.
-        if (matchedAtLeastOnce && children.size() > 1) {
-            return children[1]->eval(start, last, ptr);
-        }
-
-        return matchedAtLeastOnce;
+        return result;
     }
+
     void print_tree(int depth = 0) const override {
         for (int i = 0; i < depth; ++i) std::cout << "  "; // Indentation for readability
         std::cout << "many\n";
@@ -170,10 +249,10 @@ struct many: op{
 
 };
 struct or_:op{
-    bool eval(it first, it last, it& ptr) override{
+    MatchResult eval(it first, it last, it& ptr) override {
         auto result = children[0]->eval(first, last, ptr);
-        if (result){
-            return true;
+        if (result.success) {
+            return result;
         }
         return children[1]->eval(first, last, ptr);
     }
@@ -189,35 +268,48 @@ struct or_:op{
 
 struct counter:op{
     int N = 0;
-    counter(int c):N(c){}
-    bool eval(it first, it last, it& ptr) override {
+    counter(int c) : N(c) {}
+
+    MatchResult eval(it first, it last, it& ptr) override {
+        MatchResult result;
         if (std::distance(first, last) < N) {
-            return false;
+            result.success = false;
+            return result; // Return early if there aren't enough characters left to match N times
         }
+
         int count = 0;
-        it start = first; // Remember the start position.
-        // Try to match exactly N occurrences of the specified character/pattern.
+        it start = first; // Remember the start position for potential rollback
+        it matchEnd = first; // To track the end of the last successful match
+
+        // Try to match exactly N occurrences of the specified character/pattern
         while (first != last && count < N) {
-            if (children[0]->eval(first, last, ptr)) {
-                // Successfully matched one occurrence, move to the next character.
+            MatchResult childResult = children[0]->eval(first, last, ptr);
+            if (childResult.success) {
+                // Successfully matched one occurrence, move to the next character
                 ++count;
-                ++first;
-                ptr = first; // Update ptr to reflect the new position.
+                matchEnd = childResult.end; // Update matchEnd to the end of this successful match
+                first = matchEnd; // Prepare first for the next match
             } else {
-                // Failed to match the required character/pattern.
+                // Failed to match the required character/pattern
                 break;
             }
         }
 
         if (count == N) {
-            // Matched exactly N occurrences.
-            return true;
+            // Matched exactly N occurrences
+            result.success = true;
+            result.start = start;
+            result.end = matchEnd; // End of the last successful match
+            ptr = matchEnd; // Update ptr to reflect the new position
         } else {
-            // Reset first to its original position if the match was not successful.
+            // Reset first to its original position if the match was not successful
             first = start;
-            return false;
+            result.success = false;
         }
+
+        return result;
     }
+
     void print_tree(int depth = 0) const override {
         for (int i = 0; i < depth; ++i) std::cout << "  ";
         std::cout << "counter\n";
@@ -227,13 +319,17 @@ struct counter:op{
     }
 };
 struct expr_op : op {
-    bool eval(it first, it last, it& ptr) override{
-        if(first == last){return false;}
-        auto result = children[0]->eval(first, last, ptr);
-        if(result){
-            return true;
+    MatchResult eval(it first, it last, it& ptr) override {
+        MatchResult result;
+        // Check if we've reached the end of the input
+        if (first == last) {
+            result.success = false; // No match if there's no input left
+            return result;
         }
-        return false;
+        // Evaluate the first (and presumably only) child
+        result = children[0]->eval(first, last, ptr);
+        // The success of this operation is directly dependent on the child's success
+        return result;
     }
     void print_tree(int depth = 0) const override {
         for (int i = 0; i < depth; ++i) std::cout << "  ";

@@ -91,7 +91,7 @@ ch_op* char_parser(it first, it last, lexer lexer){
         wc->add(result);
         return wc;
     }
-    if (token == lexer::CHAR || token == lexer::DIGIT){
+    if (token == lexer::CHAR || token == lexer::DIGIT || token == lexer::SPACE){
         return new ch_op(*first);
     }
     return nullptr;
