@@ -18,6 +18,5 @@ Array.prototype.iter = function () {
     while (it.has_next()){
         console.log(it.next());
     }
-}
 arr =[1,69,420,666];
 arr.iter();
